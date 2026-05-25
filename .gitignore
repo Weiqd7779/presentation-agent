@@ -1,0 +1,28 @@
+# Local secrets/config
+.vision_llm_config.json
+.env
+.env.*
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Local generated workspace/cache
+.template_cache/
+presentation-agent-workspace/
+references/token-benchmark/
+scripts/token_context_benchmark.py
+
+# Common generated artifacts
+*.log
+*.tmp
+*.bak
+*.pdf
+*.png
+*.jpg
+*.jpeg
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.vscode/

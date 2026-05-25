@@ -1,0 +1,45 @@
+{
+  "_instructions": "Copy this file to .vision_llm_config.json and fill in your values. Delete this _instructions key.",
+
+  "provider": "claude",
+
+  "claude": {
+    "_note": "Get your key from https://console.anthropic.com",
+    "api_key_env": "ANTHROPIC_API_KEY",
+    "model": "claude-sonnet-4-6",
+    "max_tokens": 4096
+  },
+
+  "openai": {
+    "_note": "Get your key from https://platform.openai.com",
+    "api_key_env": "OPENAI_API_KEY",
+    "model": "gpt-4o",
+    "max_tokens": 4096
+  },
+
+  "gemini": {
+    "_note": "Get your key from https://aistudio.google.com",
+    "api_key_env": "GOOGLE_API_KEY",
+    "model": "gemini-2.0-flash",
+    "max_tokens": 8192
+  },
+
+  "fireworks": {
+    "_note": "OpenAI-compatible Fireworks endpoint. Set FIREWORKS_API_KEY in the environment.",
+    "endpoint_url": "https://api.fireworks.ai/inference/v1/chat/completions",
+    "api_key_env": "FIREWORKS_API_KEY",
+    "model": "accounts/fireworks/models/kimi-k2p5",
+    "max_tokens": 4096,
+    "temperature": 0,
+    "response_format": { "type": "json_object" },
+    "system_prompt": "You are a strict JSON API. Return only one valid JSON object. Do not include analysis, Markdown, or prose."
+  },
+
+  "custom": {
+    "_note": "For self-hosted models via ngrok/Colab. Use colab_ngrok_vision_llm_setup.ipynb to get the endpoint URL.",
+    "endpoint_url": "https://YOUR-NGROK-ID.ngrok-free.app/v1/chat/completions",
+    "api_key": "none",
+    "model": "llava-1.5-7b-hf",
+    "request_format": "openai"
+  }
+}
