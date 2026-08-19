@@ -63,6 +63,7 @@ uv run python scripts/orchestrator.py finalize "<output_dir>"
 ```
 
 The command checks `qa/vision_qa_report.json` and blocks if QA did not pass.
+It then packs `output_final.pptx`, opens it through the PowerPoint DOM, reads the slide count, and writes `powerpoint_validation_final.json`.
 
 If the user explicitly wants a packaged file despite failing QA:
 
@@ -73,6 +74,8 @@ uv run python scripts/orchestrator.py finalize "<output_dir>" --force
 Finalize outputs:
 
 - `output_final.pptx`
+- `powerpoint_validation_final.json`
+- `run_manifest.json`
 
 ## Provider Setup
 

@@ -52,6 +52,12 @@ Read [stages/stage2-content-merger.md](stages/stage2-content-merger.md).
 
 Preferred path: create a `mapping.json` in the output directory and build from data. Before writing the mapping, decide whether to keep, duplicate, delete, or reorder slides. Do not default to the original slide sequence when the content would be clearer with repeated layouts or fewer slides.
 
+Preflight the mapping before building:
+
+```powershell
+uv run python scripts/orchestrator.py preflight "<output_dir>" "<output_dir>\mapping.json"
+```
+
 ```powershell
 uv run python scripts/orchestrator.py build-json "<output_dir>" "<output_dir>\mapping.json"
 ```
@@ -90,6 +96,7 @@ uv run python scripts/orchestrator.py build "<output_dir>" "<output_dir>\inject_
 
 After Stage 2, inspect `output_draft_text.md` for missing content and obvious mapping mistakes.
 If `output_draft_text.md` contains mojibake for non-English text, inspect `output_draft_text_direct.md` instead.
+Stage 2 also validates `output_draft.pptx` through the PowerPoint DOM and records the result in `powerpoint_validation_draft.json`.
 
 ## Stage 3: Visual QA
 
@@ -109,6 +116,8 @@ Review `qa/vision_qa_report.json`.
 uv run python scripts/orchestrator.py finalize "<output_dir>"
 ```
 
+Finalize validates `output_final.pptx` through the PowerPoint DOM and records the result in `powerpoint_validation_final.json`.
+
 If a user explicitly asks to package despite failing QA, use:
 
 ```powershell
@@ -122,6 +131,8 @@ uv run python scripts/orchestrator.py finalize "<output_dir>" --force
 - Use `slide_order` as a design tool when the user's content needs duplicated layouts, removed sections, or a stronger narrative flow.
 - Do not edit decorative placeholders such as dates, slide numbers, footers, or headers unless explicitly requested.
 - Keep `mapping.json` or `inject_content.py` in the output directory, not inside the skill source.
+- Treat `mapping_preflight_report.json`, `powerpoint_validation_draft.json`, `qa/vision_qa_report.json`, and `powerpoint_validation_final.json` as delivery gates.
+- Check `run_manifest.json` before reporting completion; it records the latest gate status and artifact paths.
 - Do not finalize a normal run until visual QA passes.
 - Keep local Vision LLM credentials outside version control. Use `.vision_llm_config.template.json` as the template.
 

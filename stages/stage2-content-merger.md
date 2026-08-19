@@ -96,8 +96,15 @@ Rules:
 Run:
 
 ```powershell
+uv run python scripts/orchestrator.py preflight "<output_dir>" "<output_dir>\mapping.json"
+```
+
+```powershell
 uv run python scripts/orchestrator.py build-json "<output_dir>" "<output_dir>\mapping.json"
 ```
+
+`build-json` reruns the same preflight before changing the unpacked PPTX, so mapping errors fail before slide XML is modified.
+The preflight fully verifies `content_map` and `image_map` names against `placeholders.txt`. `table_map` is slide-range checked and reported as advisory because table names are not currently listed in `placeholders.txt`.
 
 ## Fallback Input: inject_content.py
 
@@ -123,6 +130,8 @@ After build:
 
 - Read `output_draft_text.md`.
 - If localized text in `output_draft_text.md` appears as mojibake, read `output_draft_text_direct.md`.
+- Confirm `mapping_preflight_report.json` passed.
+- Confirm `powerpoint_validation_draft.json` passed and contains a readable PowerPoint slide count.
 - Confirm every intended content section appears.
 - Confirm the slide count and order match the intended story.
 - Look for leftover template text, `[Title]`, `{{Name}}`, `Lorem ipsum`, or similar placeholders.
