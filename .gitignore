@@ -6,10 +6,13 @@
 # Python cache
 __pycache__/
 *.py[cod]
+.venv/
+uv.lock
 
 # Local generated workspace/cache
 .template_cache/
 presentation-agent-workspace/
+outputs/
 references/token-benchmark/
 scripts/token_context_benchmark.py
 

@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 os.environ["MUPDF_MESSAGES"] = "0"
@@ -92,6 +93,102 @@ def get_file_hash(filepath: Path) -> str:
     hasher = hashlib.md5()
     hasher.update(filepath.read_bytes())
     return hasher.hexdigest()
+
+
+def _manifest_path(output_dir: Path) -> Path:
+    return output_dir / "run_manifest.json"
+
+
+def _update_manifest(output_dir: Path, section: str, payload: dict) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    path = _manifest_path(output_dir)
+    try:
+        manifest = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except Exception:
+        manifest = {}
+    manifest.setdefault("schema_version", 1)
+    manifest["updated_at"] = datetime.now(timezone.utc).isoformat()
+    manifest[section] = payload
+    path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def _read_json_file(path: Path) -> dict:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _run_preflight_gate(output_dir: Path, mapping_json: Path) -> None:
+    preflight_report = output_dir / "mapping_preflight_report.json"
+    cmd = [
+        sys.executable,
+        str(STAGE2_DIR / "preflight_mapping.py"),
+        str(output_dir),
+        str(mapping_json),
+        "--report",
+        str(preflight_report),
+    ]
+    try:
+        run_command(cmd)
+    except subprocess.CalledProcessError:
+        report = _read_json_file(preflight_report)
+        _update_manifest(
+            output_dir,
+            "mapping_preflight",
+            {
+                "status": "fail",
+                "mapping_json": str(mapping_json),
+                "report": str(preflight_report),
+                "metrics": report.get("metrics", {}),
+            },
+        )
+        raise
+
+    report = _read_json_file(preflight_report)
+    _update_manifest(
+        output_dir,
+        "mapping_preflight",
+        {
+            "status": "pass",
+            "mapping_json": str(mapping_json),
+            "report": str(preflight_report),
+            "metrics": report.get("metrics", {}),
+        },
+    )
+
+
+def _run_powerpoint_validation_gate(output_dir: Path, pptx_file: Path, label: str) -> None:
+    report_path = output_dir / f"{label}.json"
+    cmd = [sys.executable, str(BASE_DIR / "validate_powerpoint.py"), str(pptx_file), "--report", str(report_path)]
+    try:
+        run_command(cmd)
+    except subprocess.CalledProcessError:
+        report = _read_json_file(report_path)
+        _update_manifest(
+            output_dir,
+            label,
+            {
+                "status": "fail",
+                "pptx": str(pptx_file),
+                "report": str(report_path),
+                "slide_count": report.get("slide_count"),
+                "error": report.get("error"),
+            },
+        )
+        raise
+
+    report = _read_json_file(report_path)
+    _update_manifest(
+        output_dir,
+        label,
+        {
+            "status": "pass",
+            "pptx": str(pptx_file),
+            "report": str(report_path),
+            "slide_count": report.get("slide_count"),
+        },
+    )
 
 
 def _find_soffice() -> str:
@@ -230,6 +327,8 @@ def _pack_and_verify(output_dir: Path) -> None:
         )
         print("  [WARN] markitdown failed; continuing because PPTX pack and structural audit passed.")
     _extract_direct_pptx_text(output_pptx, output_dir / "output_draft_text_direct.md")
+    print("\n--- 5. Validate draft with PowerPoint DOM ---")
+    _run_powerpoint_validation_gate(output_dir, output_pptx, "powerpoint_validation_draft")
     print(f"\n[done] Draft deck: {output_pptx}")
 
 
@@ -251,10 +350,27 @@ def stage2_build_json(output_dir: Path, mapping_json: Path) -> None:
     if not mapping_json.exists():
         raise FileNotFoundError(f"Mapping JSON not found: {mapping_json}")
 
+    print("\n--- 0. Preflight mapping.json ---")
+    _run_preflight_gate(output_dir, mapping_json)
+
     unpacked_dir = _reset_unpacked_from_source(output_dir)
     print("\n--- 1. Apply mapping.json ---")
     run_command([sys.executable, str(STAGE2_DIR / "apply_mapping_json.py"), str(unpacked_dir), str(mapping_json)])
     _pack_and_verify(output_dir)
+
+
+def stage_preflight(output_dir: Path, mapping_json: Path) -> None:
+    output_dir = output_dir.resolve()
+    mapping_json = mapping_json.resolve()
+    _run_preflight_gate(output_dir, mapping_json)
+
+
+def stage_validate(pptx_file: Path, output_dir: Path | None = None, label: str = "powerpoint_validation") -> None:
+    pptx_file = pptx_file.resolve()
+    if output_dir is None:
+        output_dir = pptx_file.parent
+    output_dir = output_dir.resolve()
+    _run_powerpoint_validation_gate(output_dir, pptx_file, label)
 
 
 def stage3_audit(pptx_file: Path, output_dir: Path) -> None:
@@ -274,6 +390,17 @@ def stage3_audit(pptx_file: Path, output_dir: Path) -> None:
     report_path = qa_dir / "vision_qa_report.json"
     if report_path.exists():
         print(f"\n[done] QA report: {report_path}")
+        report = _read_json_file(report_path)
+        _update_manifest(
+            output_dir,
+            "visual_qa",
+            {
+                "status": "pass" if report.get("pass") else "fail",
+                "pptx": str(pptx_file),
+                "report": str(report_path),
+                "blocking_issue_count": report.get("blocking_issue_count"),
+            },
+        )
     else:
         print("\n[warn] QA report was not created.")
 
@@ -313,6 +440,8 @@ def stage_finalize(output_dir: Path, force: bool = False) -> None:
     output_pptx = output_dir / "output_final.pptx"
     print(f"\n--- 2. Pack final PPTX: {output_pptx.name} ---")
     run_command([sys.executable, str(STAGE2_DIR / "pack_pptx.py"), str(unpacked_dir), str(output_pptx)])
+    print("\n--- 3. Validate final with PowerPoint DOM ---")
+    _run_powerpoint_validation_gate(output_dir, output_pptx, "powerpoint_validation_final")
     print(f"\n[done] Final deck: {output_pptx}")
 
 
@@ -332,6 +461,14 @@ def main() -> None:
     p_build_json.add_argument("output", type=Path, help="Output directory")
     p_build_json.add_argument("mapping_json", type=Path, help="Mapping JSON file")
 
+    p_preflight = subparsers.add_parser("preflight", help="Preflight a mapping.json before build")
+    p_preflight.add_argument("output", type=Path, help="Output directory")
+    p_preflight.add_argument("mapping_json", type=Path, help="Mapping JSON file")
+
+    p_validate = subparsers.add_parser("validate", help="Validate PPTX with PowerPoint COM DOM")
+    p_validate.add_argument("pptx", type=Path, help="PPTX path")
+    p_validate.add_argument("output", type=Path, nargs="?", default=None, help="Optional output directory for report")
+
     p_audit = subparsers.add_parser("audit", help="Stage 3: visual QA")
     p_audit.add_argument("pptx", type=Path, help="Draft PPTX path")
     p_audit.add_argument("output", type=Path, help="Output directory")
@@ -348,6 +485,10 @@ def main() -> None:
         stage2_build(args.output, args.inject_script)
     elif args.command == "build-json":
         stage2_build_json(args.output, args.mapping_json)
+    elif args.command == "preflight":
+        stage_preflight(args.output, args.mapping_json)
+    elif args.command == "validate":
+        stage_validate(args.pptx, args.output)
     elif args.command == "audit":
         stage3_audit(args.pptx, args.output)
     elif args.command == "finalize":
